@@ -112,9 +112,9 @@ export default function StudentHome() {
           <p className="text-lg">
             Based on your current performance and recent activities, we recommend you dedicate extra study time to **Database Management** by reviewing SQL query optimization and working through practical exercises. Also, try to allocate more focus on **Computer Networks**, specifically network protocols. Your AI mentor suggests reviewing chapters on TCP/IP and subnetting this week.
           </p>
-          <a href="/dashboard/student/mentor" className="mt-4 inline-block bg-white bg-opacity-80 hover:bg-opacity-90 text-blue-800 font-semibold py-2 px-4 rounded-full transition-all duration-200">
-            Ask Your AI Mentor More &rarr;
-          </a>
+          <div className="mt-4 inline-block bg-white bg-opacity-80 hover:bg-opacity-90 text-blue-800 font-semibold py-2 px-4 rounded-full transition-all duration-200 cursor-default">
+            💬 Use the chat icon at the bottom right to talk with your AI Mentor!
+          </div>
         </div>
       </div>
     </>

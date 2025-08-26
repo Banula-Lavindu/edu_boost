@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import FloatingChatbot from "@/components/FloatingChatbot";
 
 const NavIcon = ({ children }) => (
   <span className="inline-flex items-center justify-center w-6 h-6 mr-3">
@@ -167,15 +168,6 @@ export default function StudentDashboardLayout({ children }) {
                 ),
               },
               {
-                href: "/dashboard/student/mentor",
-                label: "AI Mentor",
-                icon: (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M7 15h.01"/><path d="M17 15h.01"/>
-                  </svg>
-                ),
-              },
-              {
                 href: "/dashboard/student/health",
                 label: "Health",
                 icon: (
@@ -219,6 +211,9 @@ export default function StudentDashboardLayout({ children }) {
         >
           {children}
         </main>
+
+        {/* Floating Chatbot */}
+        <FloatingChatbot />
       </div>
     </>
   );
