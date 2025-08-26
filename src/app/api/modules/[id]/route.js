@@ -1,19 +1,15 @@
 import { NextResponse } from 'next/server';
 import { ModuleService } from '@/lib/moduleService';
-import { adminAuth, adminDb } from '@/lib/firebaseAdmin';
+import { authenticateAPIRequest } from '@/lib/authUtils';
+import { adminDb } from '@/lib/firebaseAdmin';
 
 // GET /api/modules/[id] - Get a specific module
 export async function GET(request, { params }) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { error, user } = await authenticateAPIRequest(request, ['student', 'educator', 'admin']);
+    if (error) return error;
 
-    const token = authHeader.split(' ')[1];
-    await adminAuth.verifyIdToken(token);
-
-    const { id } = params;
+    const { id } = await params;
     const module = await ModuleService.getModuleById(id);
     
     if (!module) {
@@ -30,23 +26,10 @@ export async function GET(request, { params }) {
 // PUT /api/modules/[id] - Update a specific module
 export async function PUT(request, { params }) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { error, user } = await authenticateAPIRequest(request, ['educator', 'admin']);
+    if (error) return error;
 
-    const token = authHeader.split(' ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    
-    // Check if user is educator or admin
-    const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
-    const userData = userDoc.data();
-    
-    if (!userData || (userData.role !== 'educator' && userData.role !== 'admin')) {
-      return NextResponse.json({ error: 'Forbidden - Educator or Admin access required' }, { status: 403 });
-    }
-
-    const { id } = params;
+    const { id } = await params;
     const updateData = await request.json();
     
     // Check if module exists and user has permission to edit
@@ -87,7 +70,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Forbidden - Educator or Admin access required' }, { status: 403 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     
     // Check if module exists and user has permission to delete
     const existingModule = await ModuleService.getModuleById(id);

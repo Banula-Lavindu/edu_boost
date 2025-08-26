@@ -8,7 +8,7 @@ export async function GET(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request, ['admin', 'educator']);
     if (error) return error;
 
-    const { id: educatorId } = params;
+    const { id: educatorId } = await params;
     
     // Get educator's assigned modules from subcollection
     const snapshot = await adminDb.collection('users')
@@ -44,7 +44,7 @@ export async function POST(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request, ['admin']);
     if (error) return error;
 
-    const { id: educatorId } = params;
+    const { id: educatorId } = await params;
     const { moduleIds } = await request.json();
     
     if (!Array.isArray(moduleIds)) {
@@ -95,7 +95,7 @@ export async function DELETE(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request, ['admin']);
     if (error) return error;
 
-    const { id: educatorId } = params;
+    const { id: educatorId } = await params;
     const { moduleIds } = await request.json();
     
     if (!Array.isArray(moduleIds)) {

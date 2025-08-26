@@ -59,8 +59,8 @@ export default function MyAssessments() {
 
   const fetchActiveAssignments = async () => {
     try {
-      const response = await apiClient.studentAPI.getActiveAssignments();
-      setActiveAssignments(response.assignments || []);
+      const activeAssignmentsResponse = await apiClient.studentAPI.getActiveAssignments();
+      setActiveAssignments(activeAssignmentsResponse.assignments || []);
     } catch (err) {
       console.error('Error fetching active assignments:', err);
       throw err;
@@ -498,7 +498,8 @@ export default function MyAssessments() {
                 return (
                   <div
                     key={assignment.id}
-                    className={`glass-effect p-6 rounded-xl shadow-lg transform hover:scale-[1.02] transition-all duration-300 border-l-4 ${
+                    onClick={() => window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}`}
+                    className={`glass-effect p-6 rounded-xl shadow-lg transform hover:scale-[1.02] transition-all duration-300 border-l-4 cursor-pointer ${
                       isOverdue ? 'border-red-500' : 'border-orange-500'
                     } ${isMounted ? 'assessment-card-animated' : 'opacity-0 scale-95'}`}
                     style={{ animationDelay: `${0.15 + idx * 0.05}s` }}
@@ -542,7 +543,10 @@ export default function MyAssessments() {
                       </div>
                     )}
                     
-                    <button className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    <button 
+                      onClick={() => window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}`}
+                      className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105"
+                    >
                       {progress ? 'View Results' : 'Start Assignment'}
                     </button>
                   </div>

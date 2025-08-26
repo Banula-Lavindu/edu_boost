@@ -72,8 +72,8 @@ export async function POST(request) {
     }
 
     // Add grader information
-    progressData.gradedBy = decodedToken.uid;
-    progressData.graderName = `${userData.firstName} ${userData.lastName}`;
+    progressData.gradedBy = user.uid;
+    progressData.graderName = `${user.firstName || 'Unknown'} ${user.lastName || 'User'}`;
     progressData.gradedAt = new Date();
     
     const progress = await ModuleService.recordStudentProgress(progressData);

@@ -8,7 +8,7 @@ export async function GET(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request);
     if (error) return error;
 
-    const { id } = params;
+    const { id } = await params;
     const course = await ModuleService.getCourseById(id);
     
     if (!course) {
@@ -41,7 +41,7 @@ export async function PUT(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request, ['educator', 'admin']);
     if (error) return error;
 
-    const { id } = params;
+    const { id } = await params;
     const updateData = await request.json();
     
     // Check if course exists
@@ -81,7 +81,7 @@ export async function DELETE(request, { params }) {
     const { error, user } = await authenticateAPIRequest(request, ['educator', 'admin']);
     if (error) return error;
 
-    const { id } = params;
+    const { id } = await params;
     
     // Check if course exists
     const existingCourse = await ModuleService.getCourseById(id);

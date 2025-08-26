@@ -594,16 +594,34 @@ export class ModuleService {
 
   static async getActiveAssignmentsByStudent(studentId) {
     try {
-      // Get student's enrolled modules
+      // Get student's enrolled courses
       const enrollments = await this.getStudentEnrollments(studentId);
       const activeAssignments = [];
       
       for (const enrollment of enrollments) {
-        if (enrollment.modules) {
-          for (const module of enrollment.modules) {
-            const assignments = await this.getAssignmentTemplates(module.id);
-            const activeModuleAssignments = assignments.filter(a => a.isActive);
-            activeAssignments.push(...activeModuleAssignments);
+        if (enrollment.courseId) {
+          // Get the course/program details to access modules
+          const courseDoc = await adminDb.collection(COURSES_COLLECTION).doc(enrollment.courseId).get();
+          if (courseDoc.exists) {
+            const courseData = courseDoc.data();
+            if (courseData.moduleIds && Array.isArray(courseData.moduleIds)) {
+              // Get each module and its assignments
+              for (const moduleId of courseData.moduleIds) {
+                const moduleDoc = await adminDb.collection(MODULES_COLLECTION).doc(moduleId).get();
+                if (moduleDoc.exists) {
+                  const moduleData = moduleDoc.data();
+                  const assignments = await this.getAssignmentTemplates(moduleId);
+                  const activeModuleAssignments = assignments
+                    .filter(a => a.isActive)
+                    .map(assignment => ({
+                      ...assignment,
+                      moduleId: moduleId,
+                      moduleName: moduleData.title || moduleData.name
+                    }));
+                  activeAssignments.push(...activeModuleAssignments);
+                }
+              }
+            }
           }
         }
       }

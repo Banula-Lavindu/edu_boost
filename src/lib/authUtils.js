@@ -20,7 +20,8 @@ export async function verifyAuthToken(request) {
     }
     
     return {
-      uid: token.id,
+      id: token.id,
+      uid: token.id, // Keep uid for backward compatibility
       email: token.email,
       role: token.role,
       name: token.name
