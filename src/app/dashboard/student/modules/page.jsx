@@ -299,6 +299,45 @@ export default function MyModules() {
             animation: drawLine 1s ease-out forwards;
             animation-delay: 0.5s; /* Delay after heading appears */
         }
+
+        /* Progress bar fill animation */
+        @keyframes progressFill {
+          from { width: 0%; }
+          to { width: var(--progress-width); }
+        }
+
+        /* Shimmer effect for progress bars */
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+
+        .progress-shimmer::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+          animation: shimmer 2s infinite;
+        }
+
+        /* Statistics card hover effect */
+        @keyframes cardPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.02); }
+        }
+
+        .stat-card:hover {
+          animation: cardPulse 0.6s ease-in-out;
+        }
+
+        /* Gradient border effect */
+        .border-gradient {
+          background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+          border: 1px solid transparent;
+        }
       `}</style>
       <div className="main-font"> {/* Apply the main font */}
         <div className="flex items-center justify-between mb-4">
@@ -414,6 +453,94 @@ export default function MyModules() {
               <p className="text-gray-700">Attempts: <strong><span className="font-bold text-blue-700">{mod.attempts}</span></strong></p>
             </div>
           ))}
+        </div>
+
+        {/* Final Year Project Prediction Section */}
+        <div className="mt-8 glass-effect border border-gradient rounded-2xl p-6 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+          <div className="flex items-center gap-3 mb-6">
+            <GraduationCap className="w-7 h-7 text-purple-600" />
+            <h2 className="text-2xl font-bold text-gray-800 header-font">
+              What Should Be Expected in Your Final Year Project?
+            </h2>
+          </div>
+          
+          {/* Overall Progress Calculation */}
+          {(() => {
+            // Mathematical calculations for progress analysis
+            const totalModules = allModules.length;
+            const completedModules = allModules.filter(mod => mod.status === 'Completed').length;
+            const inProgressModules = allModules.filter(mod => mod.status === 'In Progress').length;
+            
+            // Calculate overall completion percentage
+            const overallProgress = totalModules > 0 ? Math.round((completedModules / totalModules) * 100) : 0;
+            
+            // Calculate average grade (only for modules with grades)
+            const modulesWithGrades = allModules.filter(mod => mod.grade !== null && mod.grade !== undefined);
+            const averageGrade = modulesWithGrades.length > 0 
+              ? Math.round(modulesWithGrades.reduce((sum, mod) => sum + mod.grade, 0) / modulesWithGrades.length)
+              : 0;
+            
+            // Calculate total attempts across all modules
+            const totalAttempts = allModules.reduce((sum, mod) => sum + (mod.attempts || 0), 0);
+            
+            // Determine progress color based on performance
+            let progressColor = 'from-yellow-400 to-orange-500';
+            let readinessLevel = 'Developing';
+            
+            if (averageGrade >= 80 && overallProgress >= 75) {
+              progressColor = 'from-green-400 to-emerald-500';
+              readinessLevel = 'Highly Prepared';
+            } else if (averageGrade >= 70 && overallProgress >= 60) {
+              progressColor = 'from-blue-400 to-cyan-500';
+              readinessLevel = 'Well Prepared';
+            } else if (averageGrade >= 60 && overallProgress >= 45) {
+              progressColor = 'from-purple-400 to-pink-500';
+              readinessLevel = 'Moderately Prepared';
+            }
+            
+            return (
+              <div className="space-y-4">
+                {/* Main Progress Bar */}
+                <div className="bg-white/70 rounded-xl p-6 border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-lg font-semibold text-gray-800">Final Year Project Readiness</h4>
+                    <span className="text-sm font-medium text-gray-600">{overallProgress}% Progress</span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-6 mb-4 shadow-inner">
+                    <div 
+                      className={`bg-gradient-to-r ${progressColor} h-6 rounded-full transition-all duration-1000 ease-out relative overflow-hidden progress-shimmer flex items-center justify-center`}
+                      style={{ width: `${overallProgress}%` }}
+                    >
+                      <span className="text-white text-sm font-semibold">{readinessLevel}</span>
+                      <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Statistics */}
+                  <div className="grid grid-cols-4 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-blue-600 font-semibold text-lg">{totalModules}</div>
+                      <div className="text-gray-500">Total Modules</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-green-600 font-semibold text-lg">{completedModules}</div>
+                      <div className="text-gray-500">Completed</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-purple-600 font-semibold text-lg">{averageGrade}%</div>
+                      <div className="text-gray-500">Avg Grade</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-orange-600 font-semibold text-lg">{totalAttempts}</div>
+                      <div className="text-gray-500">Total Attempts</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </>
