@@ -24,6 +24,17 @@ import sqlite3
 from typing import Dict, List, Optional
 import uuid
 import requests
+import sys
+
+# Add the edu health model directory to the Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'edu health model'))
+
+try:
+    from eduboost_health_model import EduBoostHealthModel
+    HEALTH_MODEL_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Health model not available: {e}")
+    HEALTH_MODEL_AVAILABLE = False
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -1305,6 +1316,57 @@ def get_available_modules():
         }
     })
 
+@app.route('/api/health/predict', methods=['POST'])
+def predict_health():
+    """Health prediction endpoint using the actual EduBoost Health Model"""
+    try:
+        if not HEALTH_MODEL_AVAILABLE:
+            return jsonify({
+                'error': 'Health model not available',
+                'message': 'The health prediction model could not be loaded'
+            }), 500
+        
+        data = request.get_json(force=True)
+        
+        # Validate required fields
+        required_fields = ['mood', 'stress_level', 'procrastination_level', 'sleep_hours']
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                'error': 'Missing required fields',
+                'required': required_fields,
+                'received': list(data.keys())
+            }), 400
+        
+        # Extract input values
+        mood = data['mood']
+        stress_level = data['stress_level']
+        procrastination_level = data['procrastination_level']
+        sleep_hours = data['sleep_hours']
+        
+        # Initialize the health model (loads automatically in constructor)
+        model_path = os.path.join(os.path.dirname(__file__), '..', 'edu health model', 'eduboost_health_recommendation_model.pkl')
+        health_model = EduBoostHealthModel(model_path=model_path, verbose=True)
+        
+        # Make prediction
+        result = health_model.predict(
+            mood=mood,
+            stress_level=stress_level,
+            procrastination_level=procrastination_level,
+            sleep_hours=sleep_hours
+        )
+        
+        return jsonify({
+            'success': True,
+            'result': result,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Health prediction failed',
+            'message': str(e)
+        }), 500
+
 @app.route('/predict', methods=['POST'])
 def legacy_predict():
     """Legacy ML prediction endpoint for backward compatibility"""
@@ -1504,6 +1566,7 @@ if __name__ == '__main__':
     print("   👨‍🏫 POST /api/lecturer/feedback           - Submit lecturer feedback")
     print("   📈 POST /api/goals/<goal_id>/progress     - Update goal progress")
     print("   📖 GET  /api/modules                      - List all modules")
+    print("   🏥 POST /api/health/predict               - Health recommendations using ML model")
     print("   🔮 POST /predict                          - Legacy ML prediction")
     
     print("\n🎓 Educational Platform Features:")

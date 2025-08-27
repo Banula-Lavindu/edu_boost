@@ -29,7 +29,7 @@ const navItems = [
   { label: 'Student Details',    path: '/dashboard/educator/students-details' },
   { label: 'Student Progress',   path: '/dashboard/educator/student-progress' },
   { label: 'Assessments',        path: '/dashboard/educator/assessments' },
-  { label: 'AI Marking Tool',    path: '/dashboard/educator/assessments' },
+  { label: 'AI Marking Tool',    path: '/dashboard/educator/ai-marking' },
   { label: 'Repeated Modules',   path: '/dashboard/educator/repeated-modules' },
   { label: 'Participation Logs', path: '/dashboard/educator/participation' },
   { label: 'Notifications',      path: '/dashboard/educator/notifications' },

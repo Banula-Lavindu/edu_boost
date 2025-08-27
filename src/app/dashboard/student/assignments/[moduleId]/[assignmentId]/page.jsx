@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useParams, useRouter } from 'next/navigation';
-import { assignmentTemplateAPI, moduleAPI, progressAPI } from '@/lib/apiClient';
+import apiClient, { assignmentTemplateAPI, moduleAPI, progressAPI } from '@/lib/apiClient';
+import { uploadFile } from '@/lib/storageUtils';
 
 export default function AssignmentDetail() {
   const { data: session, status } = useSession();
@@ -20,11 +21,124 @@ export default function AssignmentDetail() {
   const [submission, setSubmission] = useState('');
   const [fileUpload, setFileUpload] = useState(null);
 
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [showAiAnalysis, setShowAiAnalysis] = useState(false);
+
   useEffect(() => {
     if (status === 'authenticated' && session?.user) {
       fetchAssignmentData();
+      fetchPreviousAIAnalysis();
     }
   }, [status, session, moduleId, assignmentId]);
+
+  const fetchPreviousAIAnalysis = async () => {
+    try {
+      const aiResponse = await apiClient.aiAssessmentAPI.get({
+        assignmentId,
+        moduleId
+      });
+      
+      if (aiResponse.success && aiResponse.data) {
+        setAiAnalysis(aiResponse.data.analysisResult);
+      }
+    } catch (aiError) {
+      // AI analysis not found or error - this is okay
+      console.log('No previous AI analysis found');
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file) return null;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('assignmentId', assignmentId);
+    formData.append('moduleId', moduleId);
+    formData.append('type', 'self-assessment');
+    
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.fileUrl;
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+    }
+    return null;
+  };
+
+  const analyzeWithAI = async (uploadedFile = null) => {
+    setAiAnalyzing(true);
+    try {
+      // Prepare uploaded files array
+      const uploadedFiles = [];
+      
+      // Handle file upload if provided
+      if (uploadedFile) {
+        const uploadedUrl = await uploadFileToStorage(uploadedFile);
+        if (uploadedUrl) {
+          uploadedFiles.push(uploadedUrl);
+        }
+      }
+
+      const analysisData = {
+        assignmentId,
+        moduleId,
+        studentWork: submission,
+        uploadedFiles,
+        assessmentCriteria: assignment?.description || ''
+      };
+
+      const response = await apiClient.aiAssessmentAPI.analyze(analysisData);
+      
+      if (response.success) {
+        const analysis = response.data.analysis;
+        setAiAnalysis(analysis);
+        
+        // Show AI analysis results
+        setShowAiAnalysis(true);
+        
+        // Automatically save the AI analysis progress to student assessment module
+        try {
+          await apiClient.selfAssessmentAPI.update({
+            assignmentId,
+            moduleId,
+            progressPercentage: analysis.progressPercentage,
+            workUploaded: true,
+            notes: `AI Analysis: ${analysis.overallFeedback}`,
+            fileUrl: uploadedFiles[0] || null,
+            aiAnalysis: analysis
+          });
+        } catch (error) {
+          console.error('Error saving AI analysis to assessment:', error);
+        }
+        
+        setShowAiAnalysis(true);
+        
+        // Show different messages based on how analysis was triggered
+        if (uploadedFile) {
+          alert(`AI analysis completed! Progress assessed at ${analysis.progressPercentage}% and saved to your assessment.`);
+        } else {
+          alert('AI analysis completed! Your progress has been automatically assessed and saved.');
+        }
+      } else {
+        alert('Failed to analyze work with AI. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error analyzing with AI:', error);
+      alert('Error analyzing work. Please try again.');
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+
 
   const fetchAssignmentData = async () => {
     try {
@@ -60,46 +174,79 @@ export default function AssignmentDetail() {
     try {
       setSubmitting(true);
       
-      const progressData = {
-        studentId: session.user.id,
+      let fileUrl = null;
+      if (fileUpload) {
+        fileUrl = await uploadFileToStorage(fileUpload);
+      }
+      
+      const submissionData = {
+        studentId: session.user.uid,
         moduleId,
         assignmentId,
-        score: 0, // Will be graded later by educator
-        submissionData: {
-          submission: submission.trim(),
-          fileUrl: fileUpload ? await uploadFile(fileUpload) : null,
-          submittedAt: new Date(),
-          status: 'submitted'
-        }
+        submissionText: submission.trim(),
+        fileUrl: fileUrl,
+        aiAnalysis: aiAnalysis // Include AI analysis if available
       };
 
-      await progressAPI.record(progressData);
+      await apiClient.submissionsAPI.create(submissionData);
       
-      // Refresh the assignment data to show updated progress
-      await fetchAssignmentData();
+      // Update student progress to mark assignment as completed
+      try {
+        await apiClient.progressAPI.update({
+          moduleId,
+          assignmentId,
+          status: 'submitted',
+          submittedAt: new Date(),
+          submission: submission.trim(),
+          fileUrl: fileUrl
+        });
+      } catch (progressError) {
+        console.error('Error updating progress:', progressError);
+      }
       
-      alert('Assignment submitted successfully!');
+      alert('Assignment submitted successfully! Redirecting to assessments...');
+      
+      // Redirect to assessments page after successful submission
+      setTimeout(() => {
+        router.push('/dashboard/student/assessments');
+      }, 1500);
       
     } catch (error) {
       console.error('Error submitting assignment:', error);
-      alert('Failed to submit assignment. Please try again.');
+      alert('Failed to submit assignment: ' + error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const uploadFile = async (file) => {
-    // This would typically upload to Firebase Storage or another service
-    // For now, we'll return a placeholder URL
-    return `uploads/${Date.now()}_${file.name}`;
+  const uploadFileToStorage = async (file) => {
+    try {
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${file.name}`;
+      const storagePath = `submissions/${session.user.uid}/${moduleId}/${assignmentId}/${fileName}`;
+      
+      const downloadURL = await uploadFile(file, storagePath);
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw new Error('Failed to upload file');
+    }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
       setFileUpload(file);
+      setWorkUploaded(true);
+      
+      // Automatically trigger AI analysis when file is uploaded
+      if (file.type === 'application/pdf') {
+        await analyzeWithAI(file);
+      }
     }
   };
+
+
 
   if (status === 'loading' || loading) {
     return (
@@ -162,6 +309,25 @@ export default function AssignmentDetail() {
 
   return (
     <div className="min-h-screen bg-slate-900 p-6">
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #1e293b;
+        }
+        .slider::-moz-range-thumb {
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #1e293b;
+        }
+      `}</style>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -219,6 +385,8 @@ export default function AssignmentDetail() {
           </div>
         </div>
 
+
+
         {/* Submission Section */}
         {!isSubmitted && !isOverdue && (
           <div className="glass-effect p-6 rounded-xl mb-8">
@@ -236,16 +404,88 @@ export default function AssignmentDetail() {
               </div>
               
               <div>
-                <label className="block text-gray-300 mb-2">File Upload (Optional)</label>
+                <label className="block text-gray-300 mb-2">
+                  Upload Work (PDF) - AI Analysis Included
+                </label>
                 <input
                   type="file"
+                  accept=".pdf"
                   onChange={handleFileChange}
                   className="w-full p-3 bg-slate-800 border border-slate-600 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
                 />
                 {fileUpload && (
-                  <p className="text-green-400 mt-2">Selected: {fileUpload.name}</p>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-green-400">Selected: {fileUpload.name}</p>
+                    {aiAnalyzing && (
+                      <div className="flex items-center gap-2 text-purple-400">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-400"></div>
+                        <span>Analyzing with AI...</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+              
+              {aiAnalysis && showAiAnalysis && (
+                <div className="mt-6 p-4 bg-purple-900/20 border border-purple-500/30 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-purple-300 flex items-center gap-2">
+                      🤖 AI Analysis Results
+                    </h4>
+                    <button
+                      onClick={() => setShowAiAnalysis(false)}
+                      className="text-purple-400 hover:text-purple-300 text-xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <span className="font-medium text-purple-300">Progress Assessment: </span>
+                      <span className="text-white font-bold">{aiAnalysis.progressPercentage}%</span>
+                    </div>
+                    
+                    <div>
+                      <span className="font-medium text-purple-300">Overall Feedback: </span>
+                      <p className="text-gray-200 mt-1">{aiAnalysis.overallFeedback}</p>
+                    </div>
+                    
+                    {aiAnalysis.completedComponents && aiAnalysis.completedComponents.length > 0 && (
+                      <div>
+                        <span className="font-medium text-green-400">✅ Completed Components:</span>
+                        <ul className="list-disc list-inside text-green-300 mt-1 ml-4">
+                          {aiAnalysis.completedComponents.map((component, index) => (
+                            <li key={index}>{component}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {aiAnalysis.missingComponents && aiAnalysis.missingComponents.length > 0 && (
+                      <div>
+                        <span className="font-medium text-red-400">❌ Missing Components:</span>
+                        <ul className="list-disc list-inside text-red-300 mt-1 ml-4">
+                          {aiAnalysis.missingComponents.map((component, index) => (
+                            <li key={index}>{component}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {aiAnalysis.suggestions && aiAnalysis.suggestions.length > 0 && (
+                      <div>
+                        <span className="font-medium text-blue-400">💡 Suggestions for Improvement:</span>
+                        <ul className="list-disc list-inside text-blue-300 mt-1 ml-4">
+                          {aiAnalysis.suggestions.map((suggestion, index) => (
+                            <li key={index}>{suggestion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               
               <button
                 onClick={handleSubmission}
@@ -293,6 +533,17 @@ export default function AssignmentDetail() {
                   <div className="bg-slate-800 p-4 rounded-lg mt-2">
                     <p className="text-gray-300 whitespace-pre-wrap">{progress.submission}</p>
                   </div>
+                </div>
+              )}
+              
+
+              
+              {progress.workUploaded !== undefined && (
+                <div>
+                  <span className="text-gray-400">Work Upload Status:</span>
+                  <p className={`font-semibold ${progress.workUploaded ? 'text-green-400' : 'text-orange-400'}`}>
+                    {progress.workUploaded ? 'All work uploaded' : 'Partial upload'}
+                  </p>
                 </div>
               )}
             </div>

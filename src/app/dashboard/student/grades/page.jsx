@@ -21,21 +21,31 @@ export default function MyGrades() {
     try {
       setLoading(true);
       
-      // Fetch student progress which contains grades
-       const progressResponse = await fetch('/api/student-progress', {
-         credentials: 'include'
-       });
-       
-       if (!progressResponse.ok) {
-         throw new Error('Failed to fetch grades');
-       }
-       
-       const progressData = await progressResponse.json();
-       
-       // Also fetch enrollments to get module names
-       const enrollmentsResponse = await fetch('/api/student/enrollments', {
-         credentials: 'include'
-       });
+      // Fetch student submissions to get grades
+      const submissionsResponse = await fetch(`/api/submissions?studentId=${session.user.uid}`, {
+        credentials: 'include'
+      });
+      
+      if (!submissionsResponse.ok) {
+        throw new Error('Failed to fetch submissions');
+      }
+      
+      const submissionsData = await submissionsResponse.json();
+      
+      // Also fetch student progress for additional grade data
+      const progressResponse = await fetch('/api/student-progress', {
+        credentials: 'include'
+      });
+      
+      let progressData = { progress: [] };
+      if (progressResponse.ok) {
+        progressData = await progressResponse.json();
+      }
+      
+      // Also fetch enrollments to get module names
+      const enrollmentsResponse = await fetch('/api/student/enrollments', {
+        credentials: 'include'
+      });
       
       let moduleMap = {};
       if (enrollmentsResponse.ok) {
@@ -47,11 +57,42 @@ export default function MyGrades() {
         });
       }
       
-      // Transform progress data to grades format
-      const transformedGrades = progressData.progress?.map(progress => ({
-        moduleName: moduleMap[progress.moduleId] || 'Unknown Module',
-        grade: progress.score || 0
-      })) || [];
+      // Create a map of module grades from submissions
+      const moduleGrades = {};
+      submissionsData.submissions?.forEach(submission => {
+        if (submission.finalGrade && submission.status === 'graded') {
+          const moduleId = submission.moduleId;
+          if (!moduleGrades[moduleId] || submission.finalGrade > moduleGrades[moduleId].grade) {
+            moduleGrades[moduleId] = {
+              grade: submission.finalGrade,
+              assignmentTitle: submission.assignment?.title,
+              submittedAt: submission.submittedAt,
+              educatorFeedback: submission.educatorFeedback
+            };
+          }
+        }
+      });
+      
+      // Combine with progress data for modules without submissions
+      const allModuleIds = new Set([
+        ...Object.keys(moduleGrades),
+        ...(progressData.progress?.map(p => p.moduleId) || [])
+      ]);
+      
+      const transformedGrades = Array.from(allModuleIds).map(moduleId => {
+        const submissionGrade = moduleGrades[moduleId];
+        const progressGrade = progressData.progress?.find(p => p.moduleId === moduleId);
+        
+        return {
+          moduleId,
+          moduleName: moduleMap[moduleId] || 'Unknown Module',
+          grade: submissionGrade?.grade || progressGrade?.score || 0,
+          assignmentTitle: submissionGrade?.assignmentTitle,
+          submittedAt: submissionGrade?.submittedAt,
+          educatorFeedback: submissionGrade?.educatorFeedback,
+          hasSubmission: !!submissionGrade
+        };
+      }).filter(grade => grade.grade > 0); // Only show modules with grades
       
       setGrades(transformedGrades);
     } catch (err) {
@@ -202,29 +243,57 @@ export default function MyGrades() {
             return (
               <div
                 key={idx}
-                className={`glass-effect p-6 rounded-xl shadow-lg space-y-3
+                className={`glass-effect p-6 rounded-xl shadow-lg space-y-4
                   transform hover:scale-[1.01] transition-all duration-300
                   ${isMounted ? 'grade-card-animated' : 'opacity-0 scale-95'}`}
                 style={{ animationDelay: `${0.2 + idx * 0.08}s` }}
               >
-                <h2 className="text-xl font-semibold text-gray-800">{g.moduleName}</h2> {/* Text color change */}
-
-                <div className="relative w-full bg-gray-300 h-6 rounded-full"> {/* Background for progress bar track */}
-                  <div
-                    className={`${status.color} h-6 rounded-full grade-progress-bar-animated flex items-center justify-center`}
-                    style={{ width: `${g.grade}%`, '--grade-width': `${g.grade}%` }}
-                  >
-                    <span className="font-bold text-white">{g.grade}%</span> {/* Ensure grade text is visible */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-800">{g.moduleName}</h2>
+                    {g.assignmentTitle && (
+                      <p className="text-sm text-gray-600 mt-1">Assignment: {g.assignmentTitle}</p>
+                    )}
+                    {g.submittedAt && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Submitted: {new Date(g.submittedAt.seconds ? g.submittedAt.seconds * 1000 : g.submittedAt).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-gray-800">{g.grade}%</div>
+                    <div className={`text-sm font-semibold ${status.textColor}`}>{status.label}</div>
+                    {g.hasSubmission && (
+                      <div className="text-xs text-green-600 mt-1">✓ Graded</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="text-sm font-semibold text-gray-700"> {/* Text color change */}
-                  Status: <span className={status.textColor}>{status.label}</span>
+                <div className="relative w-full bg-gray-300 h-4 rounded-full">
+                  <div
+                    className={`${status.color} h-4 rounded-full grade-progress-bar-animated`}
+                    style={{ width: `${g.grade}%`, '--grade-width': `${g.grade}%` }}
+                  >
+                  </div>
                 </div>
+
+                {g.educatorFeedback && (
+                  <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                    <p className="text-sm font-semibold text-blue-800 mb-1">Educator Feedback:</p>
+                    <p className="text-sm text-blue-700">{g.educatorFeedback}</p>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+        
+        {grades.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <div className="text-gray-500 text-lg mb-4">No grades available yet</div>
+            <p className="text-gray-400">Complete and submit assignments to see your grades here.</p>
+          </div>
+        )}
       </div>
     </>
   );

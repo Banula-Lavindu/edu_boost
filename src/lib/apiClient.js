@@ -93,6 +93,21 @@ export const progressAPI = {
   update: (id, data) => apiCall(`/api/student-progress/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
+export const selfAssessmentAPI = {
+  get: (assignmentId, moduleId) => {
+    const params = new URLSearchParams();
+    params.append('assignmentId', assignmentId);
+    params.append('moduleId', moduleId);
+    return apiCall(`/api/student-self-assessment?${params.toString()}`);
+  },
+  update: (data) => apiCall('/api/student-self-assessment', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const aiAssessmentAPI = {
+  analyze: (data) => apiCall('/api/ai-assessment', { method: 'POST', body: JSON.stringify(data) }),
+  get: (params) => apiCall(`/api/ai-assessment?assignmentId=${params.assignmentId}&moduleId=${params.moduleId}`),
+};
+
 export const studentAPI = {
   getAll: () => apiCall('/api/students'),
   getDashboard: () => apiCall('/api/student/dashboard'),
@@ -114,12 +129,36 @@ export const educatorAPI = {
   getAssessments: (id) => apiCall(`/api/educators/${id}/assessments`),
 };
 
+export const goalsAPI = {
+  getAll: () => apiCall('/api/goals'),
+  add: (goalData) => apiCall('/api/goals', { method: 'POST', body: JSON.stringify(goalData) }),
+  toggle: (goalId, completed) => apiCall(`/api/goals/${goalId}`, { method: 'PATCH', body: JSON.stringify({ completed }) }),
+  delete: (goalId) => apiCall(`/api/goals/${goalId}`, { method: 'DELETE' }),
+  addDummy: () => apiCall('/api/goals/dummy', { method: 'POST' }),
+};
+
 export const adminAPI = {
   getPendingStudents: () => apiCall('/api/admin/pending-students'),
   getPendingEducators: () => apiCall('/api/admin/pending-educators'),
   approveStudent: (studentId) => apiCall('/api/admin/approve-student', { method: 'POST', body: JSON.stringify({ studentId }) }),
   approveEducator: (educatorId) => apiCall('/api/admin/approve-educator', { method: 'POST', body: JSON.stringify({ educatorId }) }),
   rejectUser: (userId) => apiCall('/api/admin/reject-user', { method: 'POST', body: JSON.stringify({ userId }) }),
+  getUsers: () => apiCall('/api/admin/users'),
+  updateUser: (userId, userData) => apiCall(`/api/admin/users/${userId}`, { method: 'PUT', body: JSON.stringify(userData) }),
+  deleteUser: (userId) => apiCall(`/api/admin/users/${userId}`, { method: 'DELETE' }),
+  getSystemStats: () => apiCall('/api/admin/stats'),
 };
 
-export default { moduleAPI, assignmentTemplateAPI, courseAPI, batchAPI, assessmentAPI, progressAPI, studentAPI, educatorAPI, adminAPI };
+export const submissionsAPI = {
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams(filters);
+    return apiCall(`/api/submissions?${params}`);
+  },
+  getByAssignment: (assignmentId) => apiCall(`/api/submissions?assignmentId=${assignmentId}`),
+  create: (submissionData) => apiCall('/api/submissions', { method: 'POST', body: JSON.stringify(submissionData) }),
+  gradeWithAI: (submissionId) => apiCall(`/api/submissions/${submissionId}/grade`, { method: 'POST' }),
+  confirmGrade: (submissionId, gradeData) => apiCall(`/api/submissions/${submissionId}/grade`, { method: 'PATCH', body: JSON.stringify(gradeData) }),
+  updateStatus: (submissionId, statusData) => apiCall(`/api/submissions/${submissionId}/status`, { method: 'PATCH', body: JSON.stringify(statusData) }),
+};
+
+export default { moduleAPI, assignmentTemplateAPI, courseAPI, batchAPI, assessmentAPI, progressAPI, selfAssessmentAPI, aiAssessmentAPI, goalsAPI, studentAPI, educatorAPI, adminAPI, submissionsAPI };

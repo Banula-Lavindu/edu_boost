@@ -3,7 +3,7 @@ import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { findUserByEmail, verifyPassword } from '@/lib/userService';
 
-const handler = NextAuth({
+export const authOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -56,6 +56,8 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.uid = user.id; // Map id to uid for Firestore compatibility
+        token.sub = user.id; // Standard JWT subject claim
         token.role = user.role;
         token.name = user.name;
       }
@@ -63,10 +65,13 @@ const handler = NextAuth({
     },
     async session({ session, token }) {
       session.user.id = token.id;
+      session.user.uid = token.uid; // Add uid property for Firestore rules
       session.user.role = token.role;
       return session;
     },
   },
-});
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };

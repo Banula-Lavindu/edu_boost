@@ -4,15 +4,39 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Users collection - users can read/write their own data
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
       allow read: if request.auth != null && 
-        (resource.data.role == 'admin' || 
-         resource.data.role == 'educator');
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator');
       
       // Enrollments subcollection
       match /enrollments/{enrollmentId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
         allow read, write: if request.auth != null && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator');
+      }
+      
+      // Goals subcollection - users can manage their own goals
+      match /goals/{goalId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator');
+      }
+      
+      // Health Checks subcollection - users can manage their own health data
+      match /healthChecks/{healthCheckId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator');
+      }
+      
+      // Health Plans subcollection - users can manage their own health plans
+      match /healthPlans/{planId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && 
           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'educator');
       }
@@ -86,5 +110,8 @@ service cloud.firestore {
       allow write: if request.auth != null && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+    
+    // Note: Health data is now stored as subcollections under users
+    // See /users/{userId}/healthChecks and /users/{userId}/healthPlans rules above
   }
 }

@@ -665,6 +665,145 @@ export class ModuleService {
       throw error;
     }
   }
+
+  // Student Self-Assessment operations
+  static async getStudentSelfAssessment(studentId, moduleId, assignmentId) {
+    try {
+      const selfAssessmentRef = adminDb.collection('student_self_assessments')
+        .where('studentId', '==', studentId)
+        .where('moduleId', '==', moduleId)
+        .where('assignmentId', '==', assignmentId)
+        .limit(1);
+      
+      const snapshot = await selfAssessmentRef.get();
+      
+      if (snapshot.empty) {
+        return null;
+      }
+      
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() };
+    } catch (error) {
+      console.error('Error fetching student self-assessment:', error);
+      throw error;
+    }
+  }
+
+  static async updateStudentSelfAssessment(selfAssessmentData) {
+    try {
+      const { studentId, moduleId, assignmentId } = selfAssessmentData;
+      
+      // Check if self-assessment already exists
+      const existingAssessment = await this.getStudentSelfAssessment(studentId, moduleId, assignmentId);
+      
+      // Ensure fileUrl is included in the data structure
+      const assessmentData = {
+        ...selfAssessmentData,
+        fileUrl: selfAssessmentData.fileUrl || ''
+      };
+      
+      if (existingAssessment) {
+        // Update existing self-assessment
+        const assessmentRef = adminDb.collection('student_self_assessments').doc(existingAssessment.id);
+        await assessmentRef.update({
+          ...assessmentData,
+          updatedAt: new Date()
+        });
+        
+        return await this.getStudentSelfAssessment(studentId, moduleId, assignmentId);
+      } else {
+        // Create new self-assessment
+        const assessmentRef = adminDb.collection('student_self_assessments').doc();
+        const assessment = {
+          ...assessmentData,
+          id: assessmentRef.id,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        await assessmentRef.set(assessment);
+        return assessment;
+      }
+    } catch (error) {
+      console.error('Error updating student self-assessment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save AI assessment result
+   * @param {Object} aiAssessmentData - AI assessment data
+   */
+  static async saveAIAssessment(aiAssessmentData) {
+    try {
+      const assessmentRef = adminDb.collection('ai_assessments').doc();
+      const assessment = {
+        ...aiAssessmentData,
+        id: assessmentRef.id,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      await assessmentRef.set(assessment);
+      return { success: true, id: assessmentRef.id };
+    } catch (error) {
+      console.error('Error saving AI assessment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get AI assessment for a student
+   * @param {string} studentId - Student ID
+   * @param {string} moduleId - Module ID
+   * @param {string} assignmentId - Assignment ID
+   */
+  static async getAIAssessment(studentId, moduleId, assignmentId) {
+    try {
+      const snapshot = await adminDb.collection('ai_assessments')
+        .where('studentId', '==', studentId)
+        .where('moduleId', '==', moduleId)
+        .where('assignmentId', '==', assignmentId)
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+      
+      if (snapshot.empty) {
+        return null;
+      }
+      
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        ...doc.data()
+      };
+    } catch (error) {
+      console.error('Error getting AI assessment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get assignment template by ID
+   * @param {string} assignmentId - Assignment template ID
+   */
+  static async getAssignmentTemplate(assignmentId) {
+    try {
+      const doc = await adminDb.collection('assignment_templates').doc(assignmentId).get();
+      
+      if (!doc.exists) {
+        return null;
+      }
+      
+      return {
+        id: doc.id,
+        ...doc.data()
+      };
+    } catch (error) {
+      console.error('Error getting assignment template:', error);
+      throw error;
+    }
+  }
 }
 
 export default ModuleService;

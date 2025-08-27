@@ -6,15 +6,18 @@ import mlApiClient from "@/lib/mlApiClient";
 export default function PersonalizedPlanner() {
   const { data: session, status } = useSession();
   const [planner, setPlanner] = useState({});
+  const [healthPlans, setHealthPlans] = useState(null);
   const [isMounted, setIsMounted] = useState(false); // For entry animations
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [healthPlansLoading, setHealthPlansLoading] = useState(true);
 
   useEffect(() => {
     // Trigger fade-in animation on mount
     setIsMounted(true);
     if (session?.user?.id) {
       fetchPlanner();
+      fetchHealthPlans();
     }
   }, [session]);
 
@@ -35,8 +38,9 @@ export default function PersonalizedPlanner() {
           link: resource.resource_url
         })) || [],
         books: data.book_recommendations?.map(book => book.resource_title) || [],
-        physicalPlan: data.study_plan?.physical_plan || "No physical plan available",
-        emotionalPlan: data.study_plan?.emotional_plan || "No emotional plan available",
+        // Physical and emotional plans will come from health plans if available
+        physicalPlan: "No physical plan available",
+        emotionalPlan: "No emotional plan available",
         // miniGoals removed as requested
       };
       
@@ -61,13 +65,56 @@ export default function PersonalizedPlanner() {
           "Algorithms Unlocked",
           "Cybersecurity Essentials",
         ],
-        physicalPlan: "Walk 30 mins daily, minimum 7 hours sleep, drink 2.5L water daily, light stretching.",
-        emotionalPlan: "Practice mindfulness meditation 10 mins daily, limit screen time 1 hour before sleep, schedule weekly mentor check-ins, journal thoughts twice a week.",
+        physicalPlan: "No physical plan available",
+        emotionalPlan: "No emotional plan available",
         // miniGoals removed as requested
       };
       setPlanner(fallbackData);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHealthPlans = async () => {
+    if (!session?.user?.id) return;
+    
+    setHealthPlansLoading(true);
+    
+    try {
+      // Fetch latest health check details from user's subcollection
+      const response = await fetch('/api/health');
+      
+      // Check if response has content before parsing JSON
+      const text = await response.text();
+      if (!text) {
+        console.log('Empty response from health API');
+        return;
+      }
+      
+      const data = JSON.parse(text);
+      
+      if (response.ok && data.success && data.data && data.data.length > 0) {
+        // Get the latest health check (first item since it's ordered by createdAt desc)
+        const latestHealthCheck = data.data[0];
+        
+        // Transform the data to match the expected format
+        const healthPlansData = {
+          studyPlan: latestHealthCheck.recommendations?.study_plan || [],
+          physicalPlan: latestHealthCheck.recommendations?.physical_plan || [],
+          emotionalPlan: latestHealthCheck.recommendations?.emotional_plan || [],
+          detailedMetrics: latestHealthCheck.metrics || {},
+          confidence: latestHealthCheck.confidence || 0,
+          stressCategory: latestHealthCheck.stressCategory || 'Unknown',
+          sleepQuality: latestHealthCheck.sleepQuality || 'Unknown',
+          lastUpdated: latestHealthCheck.createdAt
+        };
+        
+        setHealthPlans(healthPlansData);
+      }
+    } catch (error) {
+      console.error('Error fetching health check details:', error);
+    } finally {
+      setHealthPlansLoading(false);
     }
   };
 
@@ -150,7 +197,10 @@ export default function PersonalizedPlanner() {
            Personalized Planner
           </h1>
           <button
-            onClick={fetchPlanner}
+            onClick={() => {
+              fetchPlanner();
+              fetchHealthPlans();
+            }}
             disabled={loading}
             className="btn-hover-effect px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
@@ -188,6 +238,9 @@ export default function PersonalizedPlanner() {
         {!error && (
           <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">
             <p className="text-sm">🤖 Personalized recommendations powered by AI based on your learning progress.</p>
+            {healthPlans && (
+              <p className="text-sm mt-1">💚 Health plans updated from your latest health check.</p>
+            )}
           </div>
         )}
 
@@ -195,8 +248,47 @@ export default function PersonalizedPlanner() {
         <div className={`glass-effect p-6 rounded-xl shadow-lg mb-6
             transform ${isMounted ? 'planner-section-animated' : 'opacity-0 scale-95'}`}
             style={{ animationDelay: '0.1s' }}>
-          <h2 className="text-xl font-semibold mb-2 text-gray-800">Weekly Study Plan</h2>
-          <p className="text-gray-700">Recommended Study Hours: <strong className="font-bold text-blue-700">{planner.studyHoursPerWeek} hours/week</strong></p>
+          <h2 className="text-xl font-semibold mb-3 text-gray-800 flex items-center">
+            📚 Weekly Study Plan
+            {healthPlans && healthPlans.studyPlan && healthPlans.studyPlan.length > 0 && (
+              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                From Health Check
+              </span>
+            )}
+          </h2>
+          <p className="text-gray-700 mb-4">Recommended Study Hours: <strong className="font-bold text-blue-700">{planner.studyHoursPerWeek} hours/week</strong></p>
+          
+          {/* Personalized Study Plan from Health Check */}
+          {healthPlansLoading ? (
+            <div className="text-gray-500">Loading health recommendations...</div>
+          ) : healthPlans && healthPlans.studyPlan && healthPlans.studyPlan.length > 0 ? (
+            <div className="mt-4">
+              <h3 className="text-lg font-medium text-gray-800 mb-2">Personalized Study Recommendations:</h3>
+              <ul className="space-y-2">
+                {healthPlans.studyPlan.map((item, index) => (
+                  <li key={index} className="flex items-start text-gray-700">
+                    <span className="text-blue-600 mr-2 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              {healthPlans.lastUpdated && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Last updated: {new Date(healthPlans.lastUpdated).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 text-gray-600">
+              <p className="mb-2">No personalized study plan available.</p>
+              <p className="text-sm text-blue-600">
+                <a href="/dashboard/student/health" className="hover:underline">
+                  Take a health check →
+                </a>
+                {' '}to get personalized study recommendations!
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Book Recommendations & Online Resources Grid */}
@@ -226,20 +318,137 @@ export default function PersonalizedPlanner() {
           </div>
         </div>
 
+        {/* Health Check Analysis */}
+        {healthPlans && (healthPlans.confidence || healthPlans.stressCategory || healthPlans.sleepQuality) && (
+          <div className={`glass-effect p-6 rounded-xl shadow-lg mb-6
+              transform ${isMounted ? 'planner-section-animated' : 'opacity-0 scale-95'}`}
+              style={{ animationDelay: '0.35s' }}>
+            <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center">
+              📊 Latest Health Check Analysis
+              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                {healthPlans.lastUpdated && new Date(healthPlans.lastUpdated).toLocaleDateString()}
+              </span>
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              {healthPlans.confidence && (
+                <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg">
+                  <h3 className="font-medium text-green-800 mb-1">Model Confidence</h3>
+                  <p className="text-2xl font-bold text-green-600">{Math.round(healthPlans.confidence * 100)}%</p>
+                </div>
+              )}
+              
+              {healthPlans.stressCategory && (
+                <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg">
+                  <h3 className="font-medium text-orange-800 mb-1">Stress Level</h3>
+                  <p className="text-lg font-semibold text-orange-600">{healthPlans.stressCategory}</p>
+                </div>
+              )}
+              
+              {healthPlans.sleepQuality && (
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg">
+                  <h3 className="font-medium text-purple-800 mb-1">Sleep Quality</h3>
+                  <p className="text-lg font-semibold text-purple-600">{healthPlans.sleepQuality}</p>
+                </div>
+              )}
+            </div>
+            
+            {healthPlans.detailedMetrics && Object.keys(healthPlans.detailedMetrics).length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-medium text-gray-700 mb-2">Detailed Metrics</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  {Object.entries(healthPlans.detailedMetrics).map(([key, value]) => (
+                    <div key={key} className="bg-gray-50 p-2 rounded">
+                      <span className="font-medium text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                      <span className="ml-1 text-gray-800">{typeof value === 'number' ? value.toFixed(2) : value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Physical & Emotional Plan Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className={`glass-effect p-6 rounded-xl shadow-lg
               transform ${isMounted ? 'planner-section-animated' : 'opacity-0 scale-95'}`}
-              style={{ animationDelay: '0.4s' }}>
-            <h2 className="text-xl font-semibold mb-3 text-gray-800">Physical Plan</h2>
-            <p className="text-gray-700">{planner.physicalPlan}</p>
+            style={{ animationDelay: '0.4s' }}>
+            <h2 className="text-xl font-semibold mb-3 text-gray-800 flex items-center">
+              🏃‍♂️ Physical Plan
+              {healthPlans && (
+                <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                  From Health Check
+                </span>
+              )}
+            </h2>
+            {healthPlansLoading ? (
+              <div className="text-gray-500">Loading health recommendations...</div>
+            ) : healthPlans && healthPlans.physicalPlan && healthPlans.physicalPlan.length > 0 ? (
+              <ul className="space-y-2">
+                {healthPlans.physicalPlan.map((item, index) => (
+                  <li key={index} className="flex items-start text-gray-700">
+                    <span className="text-green-600 mr-2 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-gray-600">
+                <p className="mb-3">No personalized physical plan available.</p>
+                <p className="text-sm text-blue-600">
+                  <a href="/dashboard/student/health" className="hover:underline">
+                    Take a health check →
+                  </a>
+                  {' '}to get personalized recommendations!
+                </p>
+              </div>
+            )}
+            {healthPlans && healthPlans.lastUpdated && (
+              <p className="text-xs text-gray-500 mt-3">
+                Last updated: {new Date(healthPlans.lastUpdated).toLocaleDateString()}
+              </p>
+            )}
           </div>
 
           <div className={`glass-effect p-6 rounded-xl shadow-lg
               transform ${isMounted ? 'planner-section-animated' : 'opacity-0 scale-95'}`}
-              style={{ animationDelay: '0.5s' }}>
-            <h2 className="text-xl font-semibold mb-3 text-gray-800">Emotional Plan</h2>
-            <p className="text-gray-700">{planner.emotionalPlan}</p>
+            style={{ animationDelay: '0.5s' }}>
+            <h2 className="text-xl font-semibold mb-3 text-gray-800 flex items-center">
+              🧠 Emotional Plan
+              {healthPlans && (
+                <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                  From Health Check
+                </span>
+              )}
+            </h2>
+            {healthPlansLoading ? (
+              <div className="text-gray-500">Loading health recommendations...</div>
+            ) : healthPlans && healthPlans.emotionalPlan && healthPlans.emotionalPlan.length > 0 ? (
+              <ul className="space-y-2">
+                {healthPlans.emotionalPlan.map((item, index) => (
+                  <li key={index} className="flex items-start text-gray-700">
+                    <span className="text-purple-600 mr-2 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-gray-600">
+                <p className="mb-3">No personalized emotional plan available.</p>
+                <p className="text-sm text-blue-600">
+                  <a href="/dashboard/student/health" className="hover:underline">
+                    Take a health check →
+                  </a>
+                  {' '}to get personalized recommendations!
+                </p>
+              </div>
+            )}
+            {healthPlans && healthPlans.lastUpdated && (
+              <p className="text-xs text-gray-500 mt-3">
+                Last updated: {new Date(healthPlans.lastUpdated).toLocaleDateString()}
+              </p>
+            )}
           </div>
         </div>
 

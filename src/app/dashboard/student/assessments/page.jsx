@@ -8,6 +8,7 @@ export default function MyAssessments() {
   const [modules, setModules] = useState([]);
   const [moduleProgress, setModuleProgress] = useState({});
   const [activeAssignments, setActiveAssignments] = useState([]);
+  const [completedAssignments, setCompletedAssignments] = useState([]);
   const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,7 +16,7 @@ export default function MyAssessments() {
 
   useEffect(() => {
     setIsMounted(true);
-    if (session?.user && status !== 'loading') {
+    if (session?.user?.uid && status !== 'loading') {
       fetchData();
     }
   }, [session, status]);
@@ -60,7 +61,43 @@ export default function MyAssessments() {
   const fetchActiveAssignments = async () => {
     try {
       const activeAssignmentsResponse = await apiClient.studentAPI.getActiveAssignments();
-      setActiveAssignments(activeAssignmentsResponse.assignments || []);
+      const allAssignments = activeAssignmentsResponse.assignments || [];
+      
+      // Get student's submissions to filter out completed assignments
+      if (!session?.user?.uid) {
+        console.error('No user session available');
+        setActiveAssignments(allAssignments);
+        setCompletedAssignments([]);
+        return;
+      }
+      
+      const submissionsResponse = await apiClient.submissionsAPI.getAll({ studentId: session.user.uid });
+      const submissions = submissionsResponse.submissions || [];
+      
+      // Create a set of submitted assignment IDs for quick lookup
+      const submittedAssignmentIds = new Set(
+        submissions.map(sub => `${sub.moduleId}-${sub.assignmentId}`)
+      );
+      
+      // Separate active and completed assignments
+      const active = [];
+      const completed = [];
+      
+      allAssignments.forEach(assignment => {
+        const assignmentKey = `${assignment.moduleId}-${assignment.id}`;
+        if (submittedAssignmentIds.has(assignmentKey)) {
+          // Find the submission for this assignment
+          const submission = submissions.find(sub => 
+            sub.moduleId === assignment.moduleId && sub.assignmentId === assignment.id
+          );
+          completed.push({ ...assignment, submission });
+        } else {
+          active.push(assignment);
+        }
+      });
+      
+      setActiveAssignments(active);
+      setCompletedAssignments(completed);
     } catch (err) {
       console.error('Error fetching active assignments:', err);
       throw err;
@@ -494,20 +531,23 @@ export default function MyAssessments() {
               {activeAssignments.map((assignment, idx) => {
                 const progress = getAssessmentProgress(assignment);
                 const isOverdue = new Date(assignment.dueDate) < new Date();
+                const submission = assignment.submission;
                 
                 return (
                   <div
                     key={assignment.id}
                     onClick={() => window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}`}
                     className={`glass-effect p-6 rounded-xl shadow-lg transform hover:scale-[1.02] transition-all duration-300 border-l-4 cursor-pointer ${
-                      isOverdue ? 'border-red-500' : 'border-orange-500'
+                      submission ? 'border-green-500' : isOverdue ? 'border-red-500' : 'border-orange-500'
                     } ${isMounted ? 'assessment-card-animated' : 'opacity-0 scale-95'}`}
                     style={{ animationDelay: `${0.15 + idx * 0.05}s` }}
                   >
                     <div className="flex justify-between items-start mb-3">
                       <h3 className="font-semibold text-gray-800">{assignment.title}</h3>
-                      <span className="px-2 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-medium">
-                        ASSIGNMENT
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        submission ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {submission ? 'SUBMITTED' : 'ASSIGNMENT'}
                       </span>
                     </div>
                     
@@ -524,7 +564,23 @@ export default function MyAssessments() {
                         <span className="text-gray-600">Max Score:</span>
                         <span className="font-medium">{assignment.maxScore || 100} points</span>
                       </div>
-                      {progress && (
+                      {submission && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Status:</span>
+                          <span className="font-medium text-blue-600">
+                            {submission.status === 'submitted' ? 'Under Review' : 
+                             submission.status === 'graded' ? 'Graded' : 
+                             submission.status === 'ai_graded' ? 'AI Graded' : 'Submitted'}
+                          </span>
+                        </div>
+                      )}
+                      {submission && submission.finalGrade !== undefined && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Grade:</span>
+                          <span className="font-medium text-purple-600">{submission.finalGrade}%</span>
+                        </div>
+                      )}
+                      {progress && !submission && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Your Score:</span>
                           <span className="font-medium text-green-600">{progress.score}%</span>
@@ -532,7 +588,18 @@ export default function MyAssessments() {
                       )}
                     </div>
                     
-                    {progress && (
+                    {submission && submission.finalGrade !== undefined && (
+                      <div className="mb-4">
+                        <div className="w-full bg-gray-300 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-purple-500 to-purple-600 h-2 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min(submission.finalGrade, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {progress && !submission && (
                       <div className="mb-4">
                         <div className="w-full bg-gray-300 rounded-full h-2">
                           <div
@@ -543,11 +610,103 @@ export default function MyAssessments() {
                       </div>
                     )}
                     
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}`}
+                        className={`w-full px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 ${
+                          submission 
+                            ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white'
+                            : progress 
+                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white'
+                            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
+                        }`}
+                      >
+                        {submission ? 'View Submission' : progress ? 'View Results' : 'Start Assignment'}
+                      </button>
+                      
+                      {submission && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}/review`;
+                          }}
+                          className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105"
+                        >
+                          Review Submission
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Completed Assignments Section */}
+        {completedAssignments.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 header-font">Completed Assignments</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {completedAssignments.map((assignment, idx) => {
+                const submission = assignment.submission;
+                
+                return (
+                  <div
+                    key={assignment.id}
+                    className={`glass-effect p-6 rounded-xl shadow-lg border-l-4 border-green-500 ${
+                      isMounted ? 'assessment-card-animated' : 'opacity-0 scale-95'
+                    }`}
+                    style={{ animationDelay: `${0.15 + idx * 0.05}s` }}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="font-semibold text-gray-800">{assignment.title}</h3>
+                      <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 text-xs font-medium">
+                        COMPLETED
+                      </span>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-2">{getModuleName(assignment.moduleId)}</p>
+                    
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Submitted:</span>
+                        <span className="font-medium text-gray-800">
+                          {new Date(submission.submittedAt.seconds * 1000).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Status:</span>
+                        <span className="font-medium text-green-600">
+                          {submission.status === 'submitted' ? 'Under Review' : 
+                           submission.status === 'graded' ? 'Graded' : 
+                           submission.status === 'ai_graded' ? 'AI Graded' : 'Submitted'}
+                        </span>
+                      </div>
+                      {submission.finalGrade !== undefined && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Grade:</span>
+                          <span className="font-medium text-blue-600">{submission.finalGrade}%</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {submission.finalGrade !== undefined && (
+                      <div className="mb-4">
+                        <div className="w-full bg-gray-300 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min(submission.finalGrade, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <button 
                       onClick={() => window.location.href = `/dashboard/student/assignments/${assignment.moduleId}/${assignment.id}`}
-                      className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105"
+                      className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105"
                     >
-                      {progress ? 'View Results' : 'Start Assignment'}
+                      View Submission
                     </button>
                   </div>
                 );

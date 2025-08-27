@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import mlApiClient from "@/lib/mlApiClient";
 import { useSession } from "next-auth/react";
 import GoalProgressService from "@/lib/goalProgressService";
+import { goalsAPI } from "@/lib/apiClient";
 
 export default function RepeatPreparation() {
   const { data: session, status } = useSession();
@@ -14,6 +15,7 @@ export default function RepeatPreparation() {
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [goalProgress, setGoalProgress] = useState({});
   const [moduleProgressData, setModuleProgressData] = useState({});
+  const [savingGoals, setSavingGoals] = useState(false);
 
   // Debug session state
   useEffect(() => {
@@ -185,6 +187,40 @@ export default function RepeatPreparation() {
     }
   };
 
+  // Save AI-generated goals to user's goals list
+  const saveGoalsToList = async () => {
+    if (!moduleGoals?.goals || !session?.user?.id) return;
+    
+    setSavingGoals(true);
+    let savedCount = 0;
+    let errorCount = 0;
+    
+    try {
+      for (const goal of moduleGoals.goals) {
+        try {
+          await goalsAPI.add({
+            goal: goal.goal_title + ': ' + goal.goal_description
+          });
+          savedCount++;
+        } catch (error) {
+          console.error('Error saving goal:', goal.goal_title, error);
+          errorCount++;
+        }
+      }
+      
+      if (savedCount > 0) {
+        alert(`Successfully saved ${savedCount} goals to your goals list!${errorCount > 0 ? ` (${errorCount} failed to save)` : ''}`);
+      } else {
+        alert('Failed to save goals. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving goals:', error);
+      alert('Failed to save goals. Please try again.');
+    } finally {
+      setSavingGoals(false);
+    }
+  };
+
   return (
     <>
       <style jsx>{`
@@ -322,12 +358,33 @@ export default function RepeatPreparation() {
                   <h2 className="text-2xl font-bold text-gray-800 header-font">
                     🎯 Suggested Goals for {selectedModule}
                   </h2>
-                  <button
-                    onClick={closeGoalsModal}
-                    className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
-                  >
-                    ×
-                  </button>
+                  <div className="flex items-center space-x-3">
+                    {moduleGoals?.goals && (
+                      <button
+                        onClick={saveGoalsToList}
+                        disabled={savingGoals}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        {savingGoals ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>💾</span>
+                            <span>Save to Goals</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={closeGoalsModal}
+                      className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </div>
 
